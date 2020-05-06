@@ -27,6 +27,8 @@ typedef struct xccl_tl_ucx_context_config {
     unsigned                 num_to_probe;
     unsigned                 alltoall_pairwise_chunk;
     int                      alltoall_pairwise_reverse;
+    unsigned                 alltoall_src_block_size;
+    unsigned                 alltoall_dst_block_size;
 } xccl_tl_ucx_context_config_t;
 
 extern xccl_team_lib_ucx_t xccl_team_lib_ucx;
@@ -123,6 +125,9 @@ typedef struct xccl_ucx_collreq {
             int                n_sreqs;
             int                n_rreqs;
         } alltoall_pairwise;
+        struct {
+            void *config;
+        } alltoall_blocked;
     };
 } xccl_ucx_collreq_t;
 

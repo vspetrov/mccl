@@ -85,6 +85,18 @@ static ucs_config_field_t xccl_tl_ucx_context_config_table[] = {
      UCS_CONFIG_TYPE_BOOL
     },
 
+    {"ALLTOALL_SRC_BLOCK_SIZE", "8",
+     "Source block size used in blocked alltoall algorithm",
+     ucs_offsetof(xccl_tl_ucx_context_config_t, alltoall_src_block_size),
+     UCS_CONFIG_TYPE_UINT
+    },
+
+    {"ALLTOALL_DST_BLOCK_SIZE", "8",
+     "Destination block size used in blocked alltoall algorithm",
+     ucs_offsetof(xccl_tl_ucx_context_config_t, alltoall_dst_block_size),
+     UCS_CONFIG_TYPE_UINT
+    },
+
     {NULL}
 };
 
@@ -134,10 +146,28 @@ xccl_ucx_alltoall_init(xccl_coll_op_args_t *coll_args,
 {
     //TODO alg selection for alltoall shoud happen here
     xccl_ucx_collreq_t *req;
+    xccl_status_t      status = XCCL_OK;
     xccl_ucx_coll_base_init(coll_args, team, &req);
-    req->start = xccl_ucx_alltoall_pairwise_start;
+    if (!coll_args->alg.set_by_user) {
+        /* Automatic algorithm selection - take knomial */
+        req->start = xccl_ucx_alltoall_blocked_start;
+    } else {
+        switch (coll_args->alg.id) {
+        case 0:
+            req->start = xccl_ucx_alltoall_pairwise_start;
+            break;
+        case 1:
+            req->start = xccl_ucx_alltoall_blocked_start;
+            break;
+        default:
+            free(req);
+            req = NULL;
+            status = XCCL_ERR_INVALID_PARAM;
+        }
+    }
+
     (*request) = (xccl_tl_coll_req_t*)&req->super;
-    return XCCL_OK;
+    return status;
 }
 
 static inline xccl_status_t

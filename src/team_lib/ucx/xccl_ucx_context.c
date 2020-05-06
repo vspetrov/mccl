@@ -79,7 +79,8 @@ xccl_status_t xccl_ucx_create_context(xccl_team_lib_t *lib,
     ctx->allreduce_kn_radix        = cfg->allreduce_kn_radix;
     ctx->alltoall_pairwise_chunk   = cfg->alltoall_pairwise_chunk;
     ctx->alltoall_pairwise_reverse = cfg->alltoall_pairwise_reverse;
-
+    ctx->alltoall_src_block_size   = cfg->alltoall_src_block_size;
+    ctx->alltoall_dst_block_size   = cfg->alltoall_dst_block_size;
     ctx->next_cid           = 0;
     *context = &ctx->super;
     return XCCL_OK;

@@ -198,7 +198,42 @@ xccl_ucx_testall(xccl_ucx_team_t *team, xccl_ucx_request_t **reqs,
 {
     int cidx;
     return xccl_ucx_req_test(team, reqs, n_reqs, &cidx,
-                                 TEAM_UCX_CTX(team)->num_to_probe, n_reqs);
+                             TEAM_UCX_CTX(team)->num_to_probe, n_reqs);
+}
+
+static inline xccl_ucx_request_t**
+xccl_ucx_get_free_req_impl(xccl_ucx_team_t *team, xccl_ucx_request_t **reqs,
+                           int *n_outstanding_reqs, int max_reqs, int blocking)
+{
+    xccl_ucx_request_t **free_req;
+    if ((*n_outstanding_reqs) < max_reqs) {
+        free_req = &reqs[(*n_outstanding_reqs)++];
+    } else {
+        int released_slot, rc;
+        rc = xccl_ucx_req_test(team, reqs, max_reqs, &released_slot,
+                               blocking ? -1 : TEAM_UCX_CTX(team)->num_to_probe, 1);
+        if (rc == XCCL_INPROGRESS) {
+            free_req = NULL;
+        } else {
+            assert(rc == XCCL_OK);
+            free_req = &reqs[released_slot];
+        }
+    }
+    return free_req;
+}
+
+static inline xccl_ucx_request_t**
+xccl_ucx_get_free_req(xccl_ucx_team_t *team, xccl_ucx_request_t **reqs,
+                      int *n_outstanding_reqs, int max_reqs)
+{
+    return xccl_ucx_get_free_req_impl(team, reqs, n_outstanding_reqs, max_reqs, 1);
+}
+
+static inline xccl_ucx_request_t**
+xccl_ucx_get_free_req_nb(xccl_ucx_team_t *team, xccl_ucx_request_t **reqs,
+                         int *n_outstanding_reqs, int max_reqs)
+{
+    return xccl_ucx_get_free_req_impl(team, reqs, n_outstanding_reqs, max_reqs, 0);
 }
 #endif
 
