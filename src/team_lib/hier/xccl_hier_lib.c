@@ -8,6 +8,7 @@
 #include "xccl_hier_team.h"
 #include "xccl_hier_context.h"
 #include "xccl_hier_schedule.h"
+#include "xccl_team.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -106,6 +107,15 @@ xccl_hier_allreduce_init(xccl_coll_op_args_t *coll_args,
     //TODO alg selection for allreduce shoud happen here
     coll_schedule_t *schedule;
     xccl_hier_context_t *ctx = ucs_derived_of(team->ctx, xccl_hier_context_t);
+    xccl_hier_team_t *hteam = ucs_derived_of(team, xccl_hier_team_t);
+    if (hteam->flags & XCCL_HIER_TEAM_PPN1) {
+        xccl_hier_pair_type_t pair = ctx->tls[ucs_ilog2(XCCL_TL_SHARP)].enabled ?
+                              XCCL_HIER_PAIR_NODE_LEADERS_SHARP :
+                              XCCL_HIER_PAIR_NODE_LEADERS_UCX;
+        xccl_tl_team_t *team = hteam->pairs[pair]->team->tl_teams[0];
+        assert(hteam->pairs[pair]->sbgp->status == SBGP_ENABLED);
+        return team->ctx->lib->collective_init(coll_args, request, team);
+    }
     xccl_hier_allreduce_spec_t spec = {
         .pairs              = {
             .node_leaders   = ctx->tls[ucs_ilog2(XCCL_TL_SHARP)].enabled ?

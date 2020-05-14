@@ -26,11 +26,18 @@ typedef enum {
     XCCL_HIER_PAIR_LAST,
 } xccl_hier_pair_type_t;
 
+enum xccl_hier_team_flags {
+    XCCL_HIER_TEAM_SINGLE_SOCKET = UCS_BIT(0),
+    XCCL_HIER_TEAM_SINGLE_NODE   = UCS_BIT(1),
+    XCCL_HIER_TEAM_PPN1          = UCS_BIT(2),
+};
+
 typedef struct xccl_hier_team {
     xccl_tl_team_t             super;
     sbgp_t                     sbgps[SBGP_LAST];
     xccl_hier_pair_t           *pairs[XCCL_HIER_PAIR_LAST];
     int                        node_leader_rank;
+    uint64_t                   flags;
 } xccl_hier_team_t;
 
 xccl_status_t xccl_hier_team_create_post(xccl_tl_context_t *context,

@@ -122,7 +122,14 @@ xccl_status_t xccl_hier_team_create_post(xccl_tl_context_t *context,
         xccl_hier_create_pair(&hier_team->sbgps[SBGP_NODE_LEADERS], hier_team,
                               XCCL_TL_VMC, XCCL_HIER_PAIR_NODE_LEADERS_VMC);
     }
-
+    hier_team->flags = 0;
+    if (hier_team->sbgps[SBGP_SOCKET].group_size == size) {
+        hier_team->flags |= XCCL_HIER_TEAM_SINGLE_SOCKET;
+    } else if (hier_team->sbgps[SBGP_NODE].group_size == size) {
+        hier_team->flags |= XCCL_HIER_TEAM_SINGLE_NODE;
+    } else if (hier_team->sbgps[SBGP_NODE_LEADERS].group_size == size) {
+        hier_team->flags |= XCCL_HIER_TEAM_PPN1;
+    }
     *team = &hier_team->super;
     return XCCL_OK;
 }
