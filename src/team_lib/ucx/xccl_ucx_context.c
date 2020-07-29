@@ -59,7 +59,7 @@ xccl_status_t xccl_ucx_create_context(xccl_team_lib_t *lib,
     assert(UCS_OK == status);
 
     worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    worker_params.thread_mode = UCS_THREAD_MODE_SINGLE;
+    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
     status = ucp_worker_create(ctx->ucp_context, &worker_params,
                                &ctx->ucp_worker);
     assert(UCS_OK == status);
