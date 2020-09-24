@@ -38,6 +38,7 @@ xccl_status_t xccl_ucx_team_create_post(xccl_tl_context_t *context,
     XCCL_TEAM_SUPER_INIT(ucx_team->super, context, params);
     nb_req->phase = 0;
     ucx_team->nb_create_req  = nb_req;
+    ucx_team->barrier_schedule.is_static = -1;
     ucx_team->range          = params->range;
     local_addrlen            = (int)ctx->ucp_addrlen;
     tmp                      = (int*)malloc(size*sizeof(int)*2);

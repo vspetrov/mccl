@@ -349,10 +349,12 @@ xccl_ucx_barrier_init(xccl_coll_op_args_t *coll_args,
                       xccl_tl_coll_req_t **request, xccl_tl_team_t *team)
 {
     //TODO alg selection for allreduce should happen here
-    xccl_ucx_collreq_t *req;
-    xccl_ucx_coll_base_init(coll_args, team, &req);
-    req->start = xccl_ucx_barrier_knomial_start;
-    (*request) = (xccl_tl_coll_req_t*)&req->super;
+    xccl_ucx_schedule_t *schedule;
+    xccl_ucx_barrier_knomial_start(ucs_derived_of(team, xccl_ucx_team_t),
+                                   coll_args, &schedule);
+    (*request) = &schedule->req;
+    (*request)->lib = &xccl_team_lib_ucx.super;
+    schedule->tag       = ((xccl_ucx_team_t*)team)->seq_num++;
     return XCCL_OK;
 }
 
@@ -385,8 +387,9 @@ xccl_ucx_collective_init(xccl_coll_op_args_t *coll_args,
 
 static xccl_status_t xccl_ucx_collective_post(xccl_tl_coll_req_t *request)
 {
-    xccl_ucx_collreq_t *req = ucs_derived_of(request, xccl_ucx_collreq_t);
-    return req->start(req);
+    xccl_ucx_schedule_t *schedule = ucs_container_of(request, xccl_ucx_schedule_t, req);
+    ucc_schedule_start(&schedule->super);
+    return XCCL_OK;
 }
 
 static xccl_status_t xccl_ucx_collective_wait(xccl_tl_coll_req_t *request)
@@ -404,19 +407,27 @@ static xccl_status_t xccl_ucx_collective_wait(xccl_tl_coll_req_t *request)
 
 static xccl_status_t xccl_ucx_collective_test(xccl_tl_coll_req_t *request)
 {
-    xccl_ucx_collreq_t *req = ucs_derived_of(request, xccl_ucx_collreq_t);
-    xccl_status_t status;
-    if (XCCL_INPROGRESS == req->complete) {
-        if (XCCL_OK != (status = req->progress(req))) {
-            return status;
-        };
-    }
-    return req->complete;
+    xccl_ucx_schedule_t *schedule = ucs_container_of(request, xccl_ucx_schedule_t, req);
+    return schedule->super.super.state == UCC_TASK_STATE_COMPLETED ? XCCL_OK :
+        XCCL_INPROGRESS;
+
+    /* xccl_ucx_collreq_t *req = ucs_derived_of(request, xccl_ucx_collreq_t); */
+    /* xccl_status_t status; */
+    /* if (XCCL_INPROGRESS == req->complete) { */
+    /*     if (XCCL_OK != (status = req->progress(req))) { */
+    /*         return status; */
+    /*     }; */
+    /* } */
+    /* return req->complete; */
 }
 
 static xccl_status_t xccl_ucx_collective_finalize(xccl_tl_coll_req_t *request)
 {
-    free(request);
+    xccl_ucx_schedule_t *schedule = ucs_container_of(request, xccl_ucx_schedule_t, req);
+    if (!schedule->is_static) {
+        free(schedule->tasks);
+        free(schedule);
+    }
     return XCCL_OK;
 }
 
@@ -450,6 +461,13 @@ static xccl_status_t xccl_ucx_lib_query(xccl_team_lib_h lib, xccl_tl_attr_t *tl_
     return XCCL_OK;
 }
 
+xccl_status_t xccl_ucx_context_progress(xccl_tl_context_t *team_context)
+{
+    xccl_team_lib_ucx_context_t *ctx = ucs_derived_of(team_context, xccl_team_lib_ucx_context_t);
+    ucp_worker_progress(ctx->ucp_worker);
+    return XCCL_OK;
+}
+
 xccl_team_lib_ucx_t xccl_team_lib_ucx = {
     .super.name                  = "ucx",
     .super.id                    = XCCL_TL_UCX,
@@ -479,7 +497,7 @@ xccl_team_lib_ucx_t xccl_team_lib_ucx = {
                                    XCCL_COLL_CAP_ALLGATHER,
     .super.ctx_create_mode       = XCCL_TEAM_LIB_CONTEXT_CREATE_MODE_LOCAL,
     .super.team_context_create   = xccl_ucx_create_context,
-    .super.team_context_progress = NULL,
+    .super.team_context_progress = xccl_ucx_context_progress,
     .super.team_context_destroy  = xccl_ucx_destroy_context,
     .super.team_create_post      = xccl_ucx_team_create_post,
     .super.team_create_test      = xccl_ucx_team_create_test,

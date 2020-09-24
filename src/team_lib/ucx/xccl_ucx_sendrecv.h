@@ -118,6 +118,37 @@ xccl_ucx_send_nb(void *buffer, size_t msglen, int dest_group_rank,
 }
 
 static inline xccl_status_t
+xccl_ucx_send_nbx(void *buffer, size_t msglen, int dest_group_rank,
+                  xccl_ucx_team_t *team, uint32_t tag, void *cb_arg,
+                  ucp_send_nbx_callback_t cb, int *immediate)
+{
+    ucs_status_ptr_t status;
+    ucp_datatype_t datatype = ucp_dt_make_contig(msglen);
+    ucp_tag_t ucp_tag       =
+        TEAM_UCX_MAKE_SEND_TAG(tag, team->super.params.oob.rank, team->ctx_id);
+    /* printf("send to group_rank %d, len %d, tag %d, ucp_tag %llx\n", */
+           /* dest_group_rank, msglen, tag, ucp_tag); */
+    *immediate = 0;
+    ucp_ep_h ep = get_p2p_ep(team, dest_group_rank);
+    ucp_request_param_t param = {
+        .op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
+                        UCP_OP_ATTR_FIELD_DATATYPE |
+                        UCP_OP_ATTR_FIELD_USER_DATA,
+        .datatype     = datatype,
+        .cb.send      = cb,
+        .user_data    = cb_arg,
+    };
+    status = ucp_tag_send_nbx(ep, buffer, 1, ucp_tag, &param);
+    if (UCS_PTR_IS_ERR(status)) {
+        fprintf(stderr, "SEND ERROR\n");
+        abort();
+    } else if (UCS_OK == status) {
+        *immediate = 1;
+    }
+    return XCCL_OK;
+}
+
+static inline xccl_status_t
 xccl_ucx_recv_nb(void *buffer, size_t msglen, int dest_group_rank,
                 xccl_ucx_team_t *team, uint32_t tag, xccl_ucx_request_t **req)
 {
@@ -126,11 +157,41 @@ xccl_ucx_recv_nb(void *buffer, size_t msglen, int dest_group_rank,
     /* fprintf(stderr,"recv from group_rank %d, len %d, tag %d\n", dest_group_rank, msglen, tag); */
     TEAM_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag,
                            dest_group_rank, team->ctx_id);
-    ucp_ep_h ep = get_p2p_ep(team, dest_group_rank);
     xccl_ucx_request_t* ucx_req  = (xccl_ucx_request_t *)
         ucp_tag_recv_nb(TEAM_UCX_WORKER(team), buffer, 1, datatype,
                         ucp_tag, ucp_tag_mask, xccl_ucx_recv_completion_cb);
     TEAM_UCX_CHECK_RECV_REQ();
+    return XCCL_OK;
+}
+
+static inline xccl_status_t
+xccl_ucx_recv_nbx(void *buffer, size_t msglen, int dest_group_rank,
+                  xccl_ucx_team_t *team, uint32_t tag, void *cb_arg,
+                  ucp_tag_recv_nbx_callback_t cb, int *immediate)
+{
+    ucp_datatype_t datatype = ucp_dt_make_contig(msglen);
+    ucp_tag_t ucp_tag, ucp_tag_mask;
+    ucs_status_ptr_t status;
+    *immediate = 0;
+    TEAM_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag,
+                           dest_group_rank, team->ctx_id);
+    /* printf("recv from group_rank %d, len %d, tag %d, ucp_tag %llx\n", */
+           /* dest_group_rank, msglen, tag, ucp_tag); */
+    ucp_request_param_t param = {
+        .op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
+                        UCP_OP_ATTR_FIELD_DATATYPE |
+                        UCP_OP_ATTR_FIELD_USER_DATA,
+        .datatype     = datatype,
+        .cb.recv      = cb,
+        .user_data    = cb_arg,
+    };
+    status = ucp_tag_recv_nbx(TEAM_UCX_WORKER(team), buffer, 1, ucp_tag, ucp_tag_mask, &param);
+    if (UCS_PTR_IS_ERR(status)) {
+        fprintf(stderr, "RECV ERROR\n");
+        abort();
+    } else if (UCS_OK == status) {
+        *immediate = 1;
+    }
     return XCCL_OK;
 }
 

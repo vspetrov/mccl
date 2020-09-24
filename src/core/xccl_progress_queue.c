@@ -33,8 +33,14 @@ xccl_status_t xccl_ctx_progress_queue(xccl_tl_context_t *tl_ctx) {
         return status;
     }
     if (popped_task) {
-        if (XCCL_OK != popped_task->progress(popped_task)) {
-            return tasks_pool_insert(&tl_ctx->pq->st, popped_task);
+        if (popped_task->progress) {
+            popped_task->progress(popped_task);
+        }
+        if (UCC_TASK_STATE_COMPLETED == popped_task->state) {
+            ucc_event_manager_notify(&popped_task->em, UCC_EVENT_COMPLETED);
+            /* task cleanup ? */
+        } else {
+            tasks_pool_insert(&tl_ctx->pq->st, popped_task);
         }
     }
     return XCCL_OK;

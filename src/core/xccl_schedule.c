@@ -69,3 +69,8 @@ void ucc_schedule_start(ucc_schedule_t *schedule)
     schedule->super.state = UCC_TASK_STATE_INPROGRESS;
     ucc_event_manager_notify(&schedule->super.em, UCC_EVENT_SCHEDULE_STARTED);
 }
+
+void ucc_schedule_reset(ucc_schedule_t *schedule) {
+    schedule->n_completed_tasks = 0;
+    schedule->super.state = UCC_TASK_STATE_NOT_READY;
+}

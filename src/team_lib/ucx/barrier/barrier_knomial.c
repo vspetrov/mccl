@@ -36,147 +36,169 @@ enum {
 #define KN_RECURSIVE_GET_PROXY(__myrank, __full_size) (__myrank - __full_size)
 #define KN_RECURSIVE_GET_EXTRA(__myrank, __full_size) (__myrank + __full_size)
 
-enum {
-    PHASE_0,
-    PHASE_1,
-    PHASE_EXTRA,
-    PHASE_PROXY,
-};
-
-#define CHECK_PHASE(_p) case _p: goto _p; break;
-#define GOTO_PHASE(_phase) do{                  \
-        switch (_phase) {                       \
-            CHECK_PHASE(PHASE_EXTRA);           \
-            CHECK_PHASE(PHASE_PROXY);           \
-            CHECK_PHASE(PHASE_1);               \
-        case PHASE_0: break;                    \
-        };                                      \
-    } while(0)
-
-#define RESTORE_STATE() do{                             \
-        iteration   = req->barrier.iteration;         \
-        radix_pow   = req->barrier.radix_mask_pow;    \
-        active_reqs = req->barrier.active_reqs;       \
-    }while(0)
-
-#define SAVE_STATE(_phase) do{                         \
-        req->barrier.phase          = _phase;        \
-        req->barrier.iteration      = iteration;     \
-        req->barrier.radix_mask_pow = radix_pow;     \
-        req->barrier.active_reqs    = active_reqs;   \
-    }while(0)
-
-xccl_status_t
-xccl_ucx_barrier_knomial_progress(xccl_ucx_collreq_t *req)
-{
-    int full_tree_size, pow_k_sup, n_full_subtrees, full_size, node_type;
-    int iteration, radix_pow, active_reqs, k, step_size, peer;
-    xccl_tl_team_t *team = req->team;
-    int myrank           = team->params.oob.rank;
-    int group_size       = team->params.oob.size;
-    int radix            = req->barrier.radix;
-    xccl_ucx_request_t **reqs = req->barrier.reqs;
-    /* fprintf(stderr, "AR, radix %d, data_size %zd, count %d\n",
- radix, data_size, args->barrier.count); */
-    KN_RECURSIVE_SETUP(radix, myrank, group_size, pow_k_sup, full_tree_size,
-                       n_full_subtrees, full_size, node_type);
-    RESTORE_STATE();
-    GOTO_PHASE(req->barrier.phase);
-
-    if (KN_EXTRA == node_type) {
-            peer = KN_RECURSIVE_GET_PROXY(myrank, full_size);
-            xccl_ucx_send_nb(NULL, 0, peer,
-                            (xccl_ucx_team_t *)team, req->tag, &reqs[0]);
-            xccl_ucx_recv_nb(NULL, 0, peer,
-                            (xccl_ucx_team_t *)team, req->tag, &reqs[1]);
-            active_reqs = 2;
+static void xccl_ucx_task_sr_send_cb(void *request, ucs_status_t status,
+                                     void *user_data) {
+    xccl_ucx_task_t *t = (xccl_ucx_task_t *)user_data;
+    ucp_request_free(request);
+    t->sr.completed++;
+    if (t->sr.completed == (t->sr.n_sends + t->sr.n_recvs)) {
+        t->super.state = UCC_TASK_STATE_COMPLETED;
     }
-
-    if (KN_PROXY == node_type) {
-        peer = KN_RECURSIVE_GET_EXTRA(myrank, full_size);
-        xccl_ucx_recv_nb(NULL, 0, peer,
-                        (xccl_ucx_team_t *)team, req->tag, &reqs[0]);
-        active_reqs = 1;
-    }
-PHASE_EXTRA:
-    if (KN_PROXY == node_type || KN_EXTRA == node_type) {
-        if (XCCL_INPROGRESS == xccl_ucx_testall((xccl_ucx_team_t *)team,
-                                                   reqs, active_reqs)) {
-            SAVE_STATE(PHASE_EXTRA);
-            return XCCL_OK;
-        }
-        if (KN_EXTRA == node_type) {
-            goto completion;
-        }
-    }
-
-    for (; iteration < pow_k_sup; iteration++) {
-        step_size = radix_pow * radix;
-        active_reqs = 0;
-        for (k=1; k < radix; k++) {
-            peer = (myrank + k*radix_pow) % step_size
-                + (myrank - myrank % step_size);
-            if (peer >= full_size) continue;
-            xccl_ucx_send_nb(NULL, 0, peer,
-                            (xccl_ucx_team_t *)team, req->tag, &reqs[active_reqs]);
-            active_reqs++;
-        }
-
-        for (k=1; k < radix; k++) {
-            peer = (myrank + k*radix_pow) % step_size
-                + (myrank - myrank % step_size);
-            if (peer >= full_size) continue;
-            xccl_ucx_recv_nb(NULL, 0, peer,
-                            (xccl_ucx_team_t *)team, req->tag, &reqs[active_reqs]);
-            active_reqs++;
-        }
-        radix_pow *= radix;
-        if (active_reqs) {
-        PHASE_1:
-            if (XCCL_INPROGRESS == xccl_ucx_testall((xccl_ucx_team_t *)team,
-                                                       reqs, active_reqs)) {
-                SAVE_STATE(PHASE_1);
-                return XCCL_OK;
-            }
-        }
-    }
-    if (KN_PROXY == node_type) {
-        peer = KN_RECURSIVE_GET_EXTRA(myrank, full_size);
-        xccl_ucx_send_nb(NULL, 0, peer,
-                        (xccl_ucx_team_t *)team, req->tag, &reqs[0]);
-        active_reqs = 1;
-        goto PHASE_PROXY;
-    } else {
-        goto completion;
-    }
-
-PHASE_PROXY:
-    if (XCCL_INPROGRESS == xccl_ucx_testall((xccl_ucx_team_t *)team,
-                                               reqs, active_reqs)) {
-        SAVE_STATE(PHASE_PROXY);
-        return XCCL_OK;
-    }
-
-completion:
-    /* fprintf(stderr, "Complete reduce, level %d frag %d and full coll arg\n", */
-    /*         COLL_ID_IN_SCHEDULE(bcol_args), bcol_args->next_frag-1); */
-    req->complete = XCCL_OK;
-    return XCCL_OK;
 }
 
-xccl_status_t xccl_ucx_barrier_knomial_start(xccl_ucx_collreq_t *req)
+static void xccl_ucx_task_sr_recv_cb(void *request, ucs_status_t status,
+                                     const ucp_tag_recv_info_t *tag_info, void *user_data) {
+    xccl_ucx_task_t *t = (xccl_ucx_task_t *)user_data;
+    ucp_request_free(request);
+    t->sr.completed++;
+    if (t->sr.completed == (t->sr.n_sends + t->sr.n_recvs)) {
+        t->super.state = UCC_TASK_STATE_COMPLETED;
+    }
+}
+
+static void xccl_ucx_send_recv_task_start(ucc_coll_task_t *task)
 {
-    size_t data_size     = req->args.buffer_info.len;
-    req->barrier.radix   = TEAM_UCX_CTX_REQ(req)->barrier_kn_radix;
-    if (req->barrier.radix > req->team->params.oob.size) {
-        req->barrier.radix = req->team->params.oob.size;
+    int i;
+    xccl_ucx_task_t *t = ucs_derived_of(task, xccl_ucx_task_t);
+    xccl_ucx_schedule_t *s = ucs_derived_of(task->schedule, xccl_ucx_schedule_t);
+    int immediate;
+    int n_sends = t->sr.n_sends;
+    int n_recvs = t->sr.n_recvs;
+    /* start task if completion event received */
+    task->state = UCC_TASK_STATE_INPROGRESS;
+    for (i=0; i<n_recvs; i++) {
+        xccl_ucx_recv_nbx(t->sr.r_bufs[i], t->sr.r_lens[i], t->sr.r_peers[i],
+                          s->team, s->tag, task,
+                          xccl_ucx_task_sr_recv_cb, &immediate);
+        if (immediate) t->sr.completed++;
+    }
+    for (i=0; i<n_sends; i++) {
+        xccl_ucx_send_nbx(t->sr.s_bufs[i], t->sr.s_lens[i], t->sr.s_peers[i],
+                          s->team, s->tag, task,
+                          xccl_ucx_task_sr_send_cb, &immediate);
+        if (immediate) t->sr.completed++;
     }
 
-    memset(req->barrier.reqs, 0, sizeof(req->barrier.reqs));
-    req->barrier.phase          = PHASE_0;
-    req->barrier.iteration      = 0;
-    req->barrier.radix_mask_pow = 1;
-    req->barrier.active_reqs    = 0;
-    req->progress = xccl_ucx_barrier_knomial_progress;
-    return xccl_ucx_barrier_knomial_progress(req);
+    if (t->sr.completed == (n_sends + n_recvs)) {
+        t->super.state = UCC_TASK_STATE_COMPLETED;
+        ucc_event_manager_notify(&t->super.em, UCC_EVENT_COMPLETED);
+    } else {
+        xccl_task_enqueue(task->schedule->tl_ctx->pq, task);
+    }
+}
+
+static inline xccl_ucx_task_t*
+get_next_task_and_subscribe(xccl_ucx_schedule_t *schedule, int type) {
+    int curr_task = schedule->n_tasks;
+    xccl_ucx_task_t *t = &schedule->tasks[curr_task];
+    ucc_coll_task_init(&t->super);
+    t->super.progress = NULL;
+    t->type = type;
+    if (type == XCCL_UCX_TASK_SEND_RECV) {
+        t->sr.n_sends = t->sr.n_recvs = t->sr.completed = 0;
+        t->super.handlers[UCC_EVENT_COMPLETED] = xccl_ucx_send_recv_task_start;
+        t->super.handlers[UCC_EVENT_SCHEDULE_STARTED] = xccl_ucx_send_recv_task_start;
+    }
+    if (curr_task > 0) {
+        ucc_event_manager_subscribe(&schedule->tasks[curr_task-1].super.em,
+                                    UCC_EVENT_COMPLETED, &t->super);
+    } else {
+        ucc_event_manager_subscribe(&schedule->super.super.em,
+                                    UCC_EVENT_SCHEDULE_STARTED, &t->super);
+    }
+    ucc_schedule_add_task(&schedule->super, &t->super);
+    schedule->n_tasks++;
+    return t;
+}
+
+static void xccl_ucx_barrier_knomial_progress(xccl_ucx_schedule_t *schedule, int radix)
+{
+    int full_tree_size, pow_k_sup, n_full_subtrees, full_size, node_type;
+    int iteration, k, step_size, peer;
+    xccl_tl_team_t *team = &schedule->team->super;
+    int myrank           = team->params.oob.rank;
+    int group_size       = team->params.oob.size;
+    int radix_pow = 1;
+    xccl_ucx_task_t *task;
+
+    KN_RECURSIVE_SETUP(radix, myrank, group_size, pow_k_sup, full_tree_size,
+                       n_full_subtrees, full_size, node_type);
+
+    if (KN_EXTRA == node_type) {
+        peer = KN_RECURSIVE_GET_PROXY(myrank, full_size);
+        task = get_next_task_and_subscribe(schedule, XCCL_UCX_TASK_SEND_RECV);
+        task->sr.n_sends = task->sr.n_recvs = 1;
+        task->sr.s_peers[0] = task->sr.r_peers[0] = peer;
+        task->sr.s_lens[0] = task->sr.r_lens[0] = 0;
+        return;
+    }
+
+    if (KN_PROXY == node_type) {
+        peer = KN_RECURSIVE_GET_EXTRA(myrank, full_size);
+        task = get_next_task_and_subscribe(schedule, XCCL_UCX_TASK_SEND_RECV);
+        task->sr.n_recvs = 1;
+        task->sr.r_peers[0] = peer;
+        task->sr.r_lens[0] = 0;
+    }
+
+    for (iteration = 0; iteration < pow_k_sup; iteration++) {
+        step_size = radix_pow * radix;
+        task = get_next_task_and_subscribe(schedule, XCCL_UCX_TASK_SEND_RECV);
+
+        for (k=1; k < radix; k++) {
+            peer = (myrank + k*radix_pow) % step_size
+                + (myrank - myrank % step_size);
+            if (peer >= full_size) continue;
+            task->sr.s_peers[task->sr.n_sends] = peer;
+            task->sr.s_lens[task->sr.n_sends] = 0;
+            task->sr.n_sends++;
+        }
+
+        for (k=1; k < radix; k++) {
+            peer = (myrank + k*radix_pow) % step_size
+                + (myrank - myrank % step_size);
+            if (peer >= full_size) continue;
+            task->sr.r_peers[task->sr.n_recvs] = peer;
+            task->sr.r_lens[task->sr.n_recvs] = 0;
+            task->sr.n_recvs++;
+        }
+        radix_pow *= radix;
+    }
+
+    if (KN_PROXY == node_type) {
+        peer = KN_RECURSIVE_GET_EXTRA(myrank, full_size);
+        task = get_next_task_and_subscribe(schedule, XCCL_UCX_TASK_SEND_RECV);
+        task->sr.n_sends = 1;
+        task->sr.s_peers[0] = peer;
+        task->sr.s_lens[0] = 0;
+    }
+}
+
+xccl_status_t xccl_ucx_barrier_knomial_start(xccl_ucx_team_t *team,
+                                             xccl_coll_op_args_t *coll,
+                                             xccl_ucx_schedule_t **sched)
+{
+    size_t data_size     = coll->buffer_info.len;
+    int radix   = TEAM_UCX_CTX(team)->barrier_kn_radix;
+    xccl_ucx_schedule_t *schedule = &team->barrier_schedule;
+    if (radix > team->super.params.oob.size) {
+        radix = team->super.params.oob.size;
+    }
+    if (-1 == team->barrier_schedule.is_static) {
+        team->barrier_schedule.is_static = 1;
+        schedule->tasks = malloc(16*sizeof(xccl_ucx_task_t));
+        schedule->team = team;
+        schedule->n_tasks = 0;
+        ucc_schedule_init(&schedule->super, team->super.ctx);
+        xccl_ucx_barrier_knomial_progress(schedule, radix);
+    } else {
+        ucc_schedule_reset(&schedule->super);
+        int i;
+        for (i=0; i<schedule->n_tasks; i++) {
+            schedule->tasks[i].sr.completed = 0;
+            schedule->tasks[i].super.state = UCC_TASK_STATE_NOT_READY;
+        }
+    }
+    *sched = schedule;
+    return XCCL_OK;
 }

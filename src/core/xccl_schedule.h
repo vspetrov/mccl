@@ -86,6 +86,6 @@ void ucc_schedule_add_task(ucc_schedule_t *schedule, ucc_coll_task_t *task);
 void ucc_schedule_start(ucc_schedule_t *schedule);
 
 ucc_status_t ucc_schedule_progress(ucc_schedule_t *schedule);
-
+void ucc_schedule_reset(ucc_schedule_t *schedule);
 
 #endif

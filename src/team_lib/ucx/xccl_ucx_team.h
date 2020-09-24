@@ -14,6 +14,7 @@ typedef struct xccl_ucx_team_t {
     ucp_ep_h        *ucp_eps;
     xccl_ep_range_t range;
     void            *nb_create_req;
+    xccl_ucx_schedule_t barrier_schedule;
 } xccl_ucx_team_t;
 
 xccl_status_t xccl_ucx_team_create_post(xccl_tl_context_t *context,
