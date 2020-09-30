@@ -153,44 +153,5 @@ typedef struct xccl_ucx_collreq {
     };
 } xccl_ucx_collreq_t;
 
-
-enum {
-    XCCL_UCX_TASK_SEND_RECV,
-    XCCL_UCX_TASK_REDUCE,
-};
-
-#define XCCL_UCX_TASK_MAX_PEERS 16
-typedef struct xccl_ucx_task {
-    ucc_coll_task_t     super;
-    xccl_coll_req_h     req;
-    int type;
-    union {
-        struct {
-            int n_sends;
-            int n_recvs;
-            int completed;
-            int s_peers[XCCL_UCX_TASK_MAX_PEERS];
-            int r_peers[XCCL_UCX_TASK_MAX_PEERS];
-            void *s_bufs[XCCL_UCX_TASK_MAX_PEERS];
-            void *r_bufs[XCCL_UCX_TASK_MAX_PEERS];
-            size_t s_lens[XCCL_UCX_TASK_MAX_PEERS];
-            size_t r_lens[XCCL_UCX_TASK_MAX_PEERS];
-        } sr;
-    };
-} xccl_ucx_task_t;
-
-typedef struct xccl_ucx_team_t xccl_ucx_team_t;
-
-typedef struct xccl_ucx_schedule {
-    ucc_schedule_t     super;
-    xccl_tl_coll_req_t req;
-    xccl_ucx_task_t   *tasks;
-    int                n_tasks;
-    xccl_ucx_team_t *team;
-    int tag;
-    int is_static;
-} xccl_ucx_schedule_t;
-
 typedef xccl_status_t (*xccl_ucx_coll_start_fn_p)(xccl_ucx_collreq_t*);
-
 #endif

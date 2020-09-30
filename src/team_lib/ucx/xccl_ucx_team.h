@@ -5,7 +5,7 @@
 #ifndef XCCL_UCX_TEAM_H_
 #define XCCL_UCX_TEAM_H_
 #include "xccl_ucx_lib.h"
-
+#include "xccl_ucx_schedule.h"
 typedef struct xccl_ucx_team_t {
     xccl_tl_team_t  super;
     uint16_t        ctx_id;

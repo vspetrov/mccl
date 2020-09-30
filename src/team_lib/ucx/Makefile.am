@@ -47,6 +47,8 @@ sources = \
 	xccl_ucx_team.c \
 	xccl_ucx_context.h \
 	xccl_ucx_context.c \
+	xccl_ucx_schedule.h \
+	xccl_ucx_schedule.c \
 	xccl_ucx_lib.h \
 	xccl_ucx_ep.h \
 	xccl_ucx_lib.c \

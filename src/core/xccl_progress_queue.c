@@ -5,7 +5,6 @@
 #define ST 1
 
 #if ST == 1
-#include <tasks_pool.h>
 typedef struct xccl_progress_queue {
     ucs_list_link_t list;
 } xccl_progress_queue_t;
@@ -48,6 +47,7 @@ xccl_status_t xccl_ctx_progress_queue_destroy(xccl_progress_queue_t **q) {
 }
 
 #else
+#include <tasks_pool.h>
 typedef struct xccl_progress_queue {
     context st;
 } xccl_progress_queue_t;
