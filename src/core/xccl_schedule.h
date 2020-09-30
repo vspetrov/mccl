@@ -3,7 +3,7 @@
 
 #include <api/xccl.h>
 #include <string.h>
-
+#include <ucs/datastruct/list.h>
 #define MAX_LISTENERS 16
 
 typedef enum {
@@ -56,6 +56,7 @@ typedef struct ucc_coll_task {
     volatile int busy;
     /* used for progress queue */
     ucc_coll_task_t *next;
+    ucs_list_link_t list;
     int was_progressed;
 } ucc_coll_task_t;
 
