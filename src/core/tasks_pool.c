@@ -21,6 +21,7 @@ xccl_status_t tasks_pool_init(context *ctx) {
     ctx->linked_lists[0] = NULL;
     ctx->linked_lists[1] = NULL;
     ctx->which_pool = 0;
+    ctx->count = 0;
     return XCCL_OK;
 }
 
@@ -40,6 +41,7 @@ xccl_status_t tasks_pool_insert(context *ctx, ucc_coll_task_t *task) {
     int i, j;
     int which_pool = task->was_progressed ^(ctx->which_pool & 1);
     int iteration_start = which_pool * ctx->deque_size;
+    __sync_fetch_and_add(&ctx->count, 1);
     for (i = iteration_start; i < (iteration_start + ctx->deque_size); i++) {
         if (ctx->tasks[i] == 0) {
             xccl_status_t status = increase_tasks(ctx, i);
@@ -72,6 +74,7 @@ xccl_status_t tasks_pool_pop(context *ctx, ucc_coll_task_t **popped_task_ptr, in
     int which_pool = curr_which_pool & 1;
     ucc_coll_task_t *popped_task = NULL;
     int iteration_start = which_pool * ctx->deque_size;
+
     for (i = iteration_start; i < (iteration_start + ctx->deque_size); i++) {
         if (ctx->tasks[i] != 0) {
             for (j = 0; j < LINE_SIZE; j++) {
@@ -80,6 +83,7 @@ xccl_status_t tasks_pool_pop(context *ctx, ucc_coll_task_t **popped_task_ptr, in
                     if (__sync_bool_compare_and_swap(&(ctx->tasks[i][j]), popped_task, 0)) {
                         *popped_task_ptr = popped_task;
                         popped_task->was_progressed = 1;
+                        __sync_fetch_and_add(&ctx->count, -1);
                         return XCCL_OK;
                     } else {
                         i = iteration_start - 1;
@@ -94,6 +98,7 @@ xccl_status_t tasks_pool_pop(context *ctx, ucc_coll_task_t **popped_task_ptr, in
                 return tasks_pool_pop(ctx, popped_task_ptr, 0);
             }
             *popped_task_ptr = popped_task;
+            if (popped_task) __sync_fetch_and_add(&ctx->count, -1);
             return XCCL_OK;
         }
     }
@@ -109,6 +114,7 @@ xccl_status_t tasks_pool_pop(context *ctx, ucc_coll_task_t **popped_task_ptr, in
     }
     *popped_task_ptr = popped_task;
     popped_task->was_progressed = 1;
+    __sync_fetch_and_add(&ctx->count, -1);
     return XCCL_OK;
 }
 

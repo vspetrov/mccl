@@ -14,6 +14,7 @@ typedef struct context {
     unsigned int which_pool;
     ucc_coll_task_t *linked_lists[2];
     int deque_size;
+    volatile int count;
 } context;
 
 xccl_status_t tasks_pool_init(context *ctx);
@@ -24,3 +25,6 @@ xccl_status_t tasks_pool_pop(context *ctx, ucc_coll_task_t **popped_task_ptr, in
 
 xccl_status_t tasks_pool_cleanup(context *ctx);
 
+static inline int tasks_pool_is_empty(context *ctx) {
+    return (ctx->count == 0);
+}

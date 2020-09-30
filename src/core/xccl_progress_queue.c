@@ -46,6 +46,10 @@ xccl_status_t xccl_ctx_progress_queue(xccl_tl_context_t *tl_ctx) {
     return XCCL_OK;
 }
 
+int xccl_ctx_progress_queue_is_empty(xccl_tl_context_t *tl_ctx) {
+    return tasks_pool_is_empty(&tl_ctx->pq->st);
+}
+
 xccl_status_t xccl_ctx_progress_queue_destroy(xccl_progress_queue_t **q) {
     return tasks_pool_cleanup(&((*q)->st));
 }

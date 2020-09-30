@@ -79,16 +79,21 @@ xccl_status_t xccl_context_progress(xccl_context_h context) {
     xccl_tl_context_t *tl_ctx;
     xccl_status_t status;
     int i;
-
+    const int max_poll_count = 100;
+    int poll_count = 0;
     for (i = 0; i < context->n_tl_ctx; i++) {
         tl_ctx = context->tl_ctx[i];
-        if (tl_ctx->lib->team_context_progress) {
-            status = tl_ctx->lib->team_context_progress(tl_ctx);
-            if (status != XCCL_OK) {
-                return status;
+        do {
+            if (tl_ctx->lib->team_context_progress) {
+                status = tl_ctx->lib->team_context_progress(tl_ctx);
+                if (status != XCCL_OK) {
+                    return status;
+                }
             }
             xccl_ctx_progress_queue(tl_ctx);
-        }
+            poll_count++;
+        } while (!xccl_ctx_progress_queue_is_empty(tl_ctx) &&
+                 (poll_count < max_poll_count));
     }
 
     return XCCL_OK;
