@@ -103,17 +103,18 @@ xccl_status_t xccl_ucx_barrier_knomial_start(xccl_ucx_team_t *team,
                                              xccl_coll_op_args_t *coll,
                                              xccl_ucx_schedule_t **sched)
 {
-    size_t data_size     = coll->buffer_info.len;
-    int radix   = TEAM_UCX_CTX(team)->barrier_kn_radix;
+    size_t data_size              = coll->buffer_info.len;
+    int radix                     = TEAM_UCX_CTX(team)->barrier_kn_radix;
     xccl_ucx_schedule_t *schedule = &team->barrier_schedule;
     if (radix > team->super.params.oob.size) {
         radix = team->super.params.oob.size;
     }
     if (-1 == team->barrier_schedule.is_static) {
         team->barrier_schedule.is_static = 1;
-        schedule->tasks = malloc(16*sizeof(xccl_ucx_task_t));
+        schedule->tasks = malloc(16*sizeof(xccl_ucx_task_t)); //todo: compute how many
         schedule->team = team;
         schedule->n_tasks = 0;
+        schedule->scratch = NULL;
         ucc_schedule_init(&schedule->super, team->super.ctx);
         xccl_ucx_barrier_knomial_progress(schedule, radix);
     } else {

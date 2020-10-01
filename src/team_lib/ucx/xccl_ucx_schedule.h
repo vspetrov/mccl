@@ -30,6 +30,17 @@ typedef struct xccl_ucx_task {
             size_t s_lens[XCCL_UCX_TASK_MAX_PEERS];
             size_t r_lens[XCCL_UCX_TASK_MAX_PEERS];
         } sr;
+        struct {
+            void              *sbuf1;
+            void              *sbuf2;
+            void              *rbuf;
+            size_t            count;
+            size_t            size;
+            size_t            stride;
+            xccl_dt_t         dtype;
+            xccl_op_t         op;
+            ucs_memory_type_t mem_type;
+        } reduce;
     };
 } xccl_ucx_task_t;
 
@@ -38,11 +49,13 @@ typedef struct xccl_ucx_team_t xccl_ucx_team_t;
 typedef struct xccl_ucx_schedule {
     ucc_schedule_t     super;
     xccl_tl_coll_req_t req;
-    xccl_ucx_task_t   *tasks;
+    xccl_ucx_task_t    *tasks;
     int                n_tasks;
-    xccl_ucx_team_t *team;
-    int tag;
-    int is_static;
+    xccl_ucx_team_t    *team;
+    int                tag;
+    int                is_static;
+    void*              scratch;
+    ucs_memory_type_t  mem_type;
 } xccl_ucx_schedule_t;
 
 void xccl_ucx_task_sr_send_cb(void *request, ucs_status_t status,
